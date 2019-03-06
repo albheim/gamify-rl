@@ -17,7 +17,7 @@ def create_epsilon_greedy_policy(Q, nA):
         return action_probs
     return policy
 
-def mc(env, n_episodes, discount=1.0, alpha=0.5, N0=100):
+def mc(env, n_episodes, discount=1.0, N0=100):
 
     nA = env.action_space.n
     obs = env.observation_space.spaces
@@ -39,7 +39,7 @@ def mc(env, n_episodes, discount=1.0, alpha=0.5, N0=100):
             epsilon = N0 / (N0 + sum(N[state]))
             action_probs = policy(state, epsilon)
             action = np.random.choice(np.arange(len(action_probs)),
-                                           p=action_probs)
+                                      p=action_probs)
             next_state, reward, done, _ = env.step(action)
 
             episode.append((state, reward, action))
@@ -66,14 +66,14 @@ def mc(env, n_episodes, discount=1.0, alpha=0.5, N0=100):
     print()
     return Q, episode_reward, episode_length
 
-def sarsa(env, n_episodes, discount=1.0, alpha=0.5, N0=100, lambda0=0.8, Qtrue=None):
+def sarsa(env, n_episodes, discount=1.0, N0=100, lambda0=0.8, Qtrue=None):
 
     nA = env.action_space.n
     obs = env.observation_space.spaces
     nS = (obs[0].n, obs[1].n)
 
     Q = np.zeros((nS[0], nS[1], nA))
-    N = np.zeros((nS[0], nS[1]))
+    N = np.zeros((nS[0], nS[1], nA))
 
     policy = create_epsilon_greedy_policy(Q, nA)
 
@@ -84,17 +84,17 @@ def sarsa(env, n_episodes, discount=1.0, alpha=0.5, N0=100, lambda0=0.8, Qtrue=N
 
         state = env.reset()
 
-        epsilon = N0 / (N0 + N[state])
+        epsilon = N0 / (N0 + sum(N[state]))
         action_probs = policy(state, epsilon)
         action = np.random.choice(np.arange(len(action_probs)),
                                   p=action_probs)
         for t in itertools.count():
-            N[state] += 1
+            N[state][action] += 1
             next_state, reward, done, _ = env.step(action)
 
             td_target = reward
             if not done:
-                epsilon = N0 / (N0 + N[next_state])
+                epsilon = N0 / (N0 + sum(N[next_state]))
                 next_action_probs = policy(next_state, epsilon)
                 next_action = np.random.choice(np.arange(len(next_action_probs)),
                                                p=next_action_probs)
@@ -107,11 +107,11 @@ def sarsa(env, n_episodes, discount=1.0, alpha=0.5, N0=100, lambda0=0.8, Qtrue=N
             for s1 in range(nS[0]):
                 for s2 in range(nS[1]):
                     for a in range(nA):
-                        Q[s1, s2, a] += alpha * td_error * E[s1, s2, a]
+                        Q[s1, s2, a] += td_error * E[s1, s2, a] / N[s1, s2, a]
                         E[s1, s2, a] *= discount * lambda0
 
 
-            print("\r{} @ {}/{} ({})".format(t, i + 1, n_episodes, np.sum((Q-Qtrue)**2)), end="")
+            print("\r{} @ {}/{} ({})".format(t, i + 1, n_episodes, (reward, epsilon)), end="")
 
             if done:
                 break
@@ -124,26 +124,30 @@ def sarsa(env, n_episodes, discount=1.0, alpha=0.5, N0=100, lambda0=0.8, Qtrue=N
     print()
     return Q, episode_error
 
-Qtrue, _, _ = mc(env, 1000000)
-sqerrs = []
-lambdas = np.arange(0, 1.01, 0.1)
-for lambda0 in lambdas:
-    Q, err = sarsa(env, 1000, 1.0, 0.5, 100, lambda0, Qtrue)
-    sqerrs.append(err)
+Qtrue, _, _ = mc(env, 10)
+Q, err = sarsa(env, 100000, 1.0, 100, 0.7, Qtrue)
 
-plt.plot(sqerrs[0])
-plt.plot(sqerrs[-1])
+# Qtrue, _, _ = mc(env, 1000000)
+# sqerrs = []
+# lambdas = np.arange(0, 1.01, 0.1)
+# for lambda0 in [0.5]:#lambdas:
+#     Q, err = sarsa(env, 10000, 1.0, 100, lambda0, Qtrue)
+#     sqerrs.append(err)
+
+plt.plot(err)
+#plt.plot(sqerrs[0])
+#plt.plot(sqerrs[-1])
 plt.title("Q mse over episodes")
 plt.xlabel("episode")
 plt.ylabel("Q mse")
 plt.legend(["lambda=0", "lambda=1"])
 plt.show()
 
-plt.plot(lambdas, [err[-1] for err in sqerrs])
-plt.title("Q mse for different lambda")
-plt.xlabel("lambda")
-plt.ylabel("Q mse")
-plt.show()
+# plt.plot(lambdas, [err[-1] for err in sqerrs])
+# plt.title("Q mse for different lambda")
+# plt.xlabel("lambda")
+# plt.ylabel("Q mse")
+# plt.show()
 
-plotting.plot_value_function(np.amax(Qtrue, axis=2))
+# plotting.plot_value_function(np.amax(Qtrue, axis=2))
 plotting.plot_value_function(np.amax(Q, axis=2))
